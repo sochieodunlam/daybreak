@@ -7,3 +7,7 @@ First steps:
 - generate images using codex of the coffee flavors
 - since they're from different parts of the world, i like the idea of a map. showing different parts of the world as you select different flavors.
 - get a daybreak logo
+
+Second steps:
+- this isn't a tech website. people want to see pictures of the coffee and food, not giant words.
+- logo picked out and added
