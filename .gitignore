@@ -1,0 +1,4 @@
+.litmus/
+.claude/
+.github/hooks/
+node_modules/
