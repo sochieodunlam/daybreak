@@ -11,3 +11,7 @@ First steps:
 Second steps:
 - this isn't a tech website. people want to see pictures of the coffee and food, not giant words.
 - logo picked out and added
+
+Third steps:
+- adding more focus to the coffee and the map rather than the words
+- add faces to the reviews- makes it seem more reputable

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useMotionTemplate, useSpring, useTransform } from "framer-motion";
+import type { MotionValue } from "framer-motion";
 import { HEXES, MAP_W, MAP_H, HEX_S, projectLonLat } from "./worldHexes";
 
 // ---- Palette: white / ink / honey, honeycomb editorial ----
@@ -16,12 +17,13 @@ const palette = {
   wash: "#FAF7F1",
 };
 
-// lon/lat used to place each origin on the equirectangular hex map
+// lon/lat used to place each origin on the equirectangular hex map.
+// Ordered west -> east so the camera sweeps the globe in one direction.
 const coffees = [
-  { origin: "Ethiopia", country: "Ethiopia", name: "Yirgacheffe", notes: "Floral · citrus · tea-like", roast: "Light roast", slug: "ethiopia", photo: "/daybreak-assets/coffee-ethiopia-yirgacheffe.png", lon: 40, lat: 6.8 },
-  { origin: "Colombia", country: "Colombia", name: "Huila", notes: "Caramel · red apple · balanced", roast: "Medium roast", slug: "colombia", photo: "/daybreak-assets/coffee-colombia-huila.png", lon: -75.5, lat: 2.5 },
-  { origin: "Sumatra", country: "Indonesia", name: "Mandheling", notes: "Cocoa · cedar · full body", roast: "Dark roast", slug: "sumatra", photo: "/daybreak-assets/coffee-sumatra-mandheling.png", lon: 99, lat: 2.6 },
   { origin: "Guatemala", country: "Guatemala", name: "Antigua", notes: "Chocolate · orange · spice", roast: "Medium roast", slug: "guatemala", photo: "/daybreak-assets/coffee-guatemala-antigua.png", lon: -90.7, lat: 14.5 },
+  { origin: "Colombia", country: "Colombia", name: "Huila", notes: "Caramel · red apple · balanced", roast: "Medium roast", slug: "colombia", photo: "/daybreak-assets/coffee-colombia-huila.png", lon: -75.5, lat: 2.5 },
+  { origin: "Ethiopia", country: "Ethiopia", name: "Yirgacheffe", notes: "Floral · citrus · tea-like", roast: "Light roast", slug: "ethiopia", photo: "/daybreak-assets/coffee-ethiopia-yirgacheffe.png", lon: 40, lat: 6.8 },
+  { origin: "Sumatra", country: "Indonesia", name: "Mandheling", notes: "Cocoa · cedar · full body", roast: "Dark roast", slug: "sumatra", photo: "/daybreak-assets/coffee-sumatra-mandheling.png", lon: 99, lat: 2.6 },
 ];
 
 const plans = [
@@ -38,9 +40,9 @@ const steps = [
 ];
 
 const testimonials = [
-  { quote: "Best coffee I've ever had.", who: "Sarah M." },
-  { quote: "I look forward to it every Monday.", who: "James T." },
-  { quote: "The Ethiopia one changed my life, honestly.", who: "Priya K." },
+  { quote: "Best coffee I've ever had.", who: "Sarah M.", photo: "/daybreak-assets/review-sarah.jpg" },
+  { quote: "I look forward to it every Monday.", who: "James T.", photo: "/daybreak-assets/review-james.jpg" },
+  { quote: "The Ethiopia one changed my life, honestly.", who: "Priya K.", photo: "/daybreak-assets/review-priya.jpg" },
 ];
 
 const faqs = [
@@ -58,7 +60,6 @@ export default function App() {
       <Nav />
       <Hero />
       <HowItWorks />
-      <ThisWeek />
       <Plans />
       <Testimonials />
       <Story />
@@ -106,7 +107,6 @@ function Nav() {
       <div className="db-nav-row">
         <div className="db-nav-links">
           <a href="#how" className="db-nav-link">How it works</a>
-          <a href="#coffees" className="db-nav-link">Coffees</a>
           <a href="#plans" className="db-nav-link">Plans</a>
           <a href="#faq" className="db-nav-link">FAQ</a>
         </div>
@@ -123,13 +123,29 @@ const hexPoints = (x: number, y: number, r: number) =>
     return `${(x + r * Math.cos(a)).toFixed(1)},${(y + r * Math.sin(a)).toFixed(1)}`;
   }).join(" ");
 
+// Camera geometry for the zoom/pan stage.
+const MAP_ASPECT = MAP_H / MAP_W;        // map is ~2.6 : 1
+const STAGE_ASPECT = 0.62;               // visible window height / width
+const Z = 3.2;                           // zoom factor (smaller window = closer)
+const K = (Z * MAP_ASPECT) / STAGE_ASPECT;          // vertical px factor for pins
+const V_CENTER = STAGE_ASPECT / (2 * MAP_ASPECT);   // vertical centering constant
+const HALF_W = 0.5 / Z;                              // half visible width (map fraction)
+const HALF_H = STAGE_ASPECT / (2 * Z * MAP_ASPECT);  // half visible height (map fraction)
+const CAM_SPRING = { stiffness: 48, damping: 17, mass: 1.1 };
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+// fractional (0..1) position of each origin within the map
+const originFrac = coffees.map((c) => {
+  const p = projectLonLat(c.lon, c.lat);
+  return { fx: p.x / MAP_W, fy: p.y / MAP_H };
+});
+
 function HexWorldMap({ active }: { active: number }) {
   const c = coffees[active];
   const pt = projectLonLat(c.lon, c.lat);
-  const R = 42; // tint radius around the active origin
-
+  const R = 44; // honey tint radius around the active origin
   return (
-    <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" style={{ display: "block", overflow: "visible" }} role="img" aria-label={`Origin map — ${c.country}`}>
+    <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style={{ display: "block" }} aria-hidden>
       {HEXES.map(([x, y], i) => {
         const near = Math.hypot(x - pt.x, y - pt.y) < R;
         return (
@@ -142,162 +158,149 @@ function HexWorldMap({ active }: { active: number }) {
           />
         );
       })}
-
-      {/* inactive origin markers */}
+      {/* tiny location tip under each pin */}
       {coffees.map((co, i) => {
-        if (i === active) return null;
         const p = projectLonLat(co.lon, co.lat);
-        return <circle key={co.slug} cx={p.x} cy={p.y} r={3.2} fill="#fff" stroke={palette.ink} strokeWidth={1.4} opacity={0.55} />;
+        const act = i === active;
+        return <circle key={co.slug} cx={p.x} cy={p.y} r={act ? 2.6 : 2} fill={act ? palette.ink : "#fff"} stroke={palette.ink} strokeWidth={act ? 0 : 1} opacity={act ? 1 : 0.5} />;
       })}
-
-      {/* active origin marker with pulsing ring */}
-      <motion.circle
-        cx={pt.x} cy={pt.y} r={6} fill="none" stroke={palette.honey} strokeWidth={2}
-        initial={{ scale: 1, opacity: 0.6 }}
-        animate={{ scale: [1, 3.4], opacity: [0.6, 0] }}
-        transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
-        style={{ transformOrigin: `${pt.x}px ${pt.y}px` }}
-      />
-      <motion.circle
-        key={`dot-${active}`}
-        cx={pt.x} cy={pt.y} r={5} fill={palette.ink} stroke="#fff" strokeWidth={2}
-        initial={{ scale: 0.3 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 18 }}
-      />
     </svg>
   );
 }
 
-// ---- Rotary (wheel) photo carousel ----
-const photoVariants = {
-  enter: (dir: number) => ({ rotate: dir > 0 ? 26 : -26, y: 30, opacity: 0 }),
-  center: { rotate: 0, y: 0, opacity: 1 },
-  exit: (dir: number) => ({ rotate: dir > 0 ? -26 : 26, y: 30, opacity: 0 }),
-};
-
-function RotaryPhoto({ active, dir }: { active: number; dir: number }) {
-  const c = coffees[active];
+// ---- A coffee "pin" planted on the map, tracking its location as the camera moves ----
+function Pin({ camX, camY, fx, fy, active, coffee, onSelect }: {
+  camX: MotionValue<number>; camY: MotionValue<number>; fx: number; fy: number;
+  active: boolean; coffee: (typeof coffees)[number]; onSelect: () => void;
+}) {
+  const leftV = useTransform(camX, (v) => 50 + (fx - v) * Z * 100);
+  const topV = useTransform(camY, (v) => 50 + (fy - v) * K * 100);
+  const left = useMotionTemplate`${leftV}%`;
+  const top = useMotionTemplate`${topV}%`;
   const [errored, setErrored] = useState(false);
-  useEffect(() => setErrored(false), [active]);
+  useEffect(() => setErrored(false), [coffee.slug, active]);
+
+  if (!active) {
+    return (
+      <motion.button
+        onClick={onSelect}
+        aria-label={`Show ${coffee.country}`}
+        whileHover={{ scale: 1.3 }}
+        style={{ position: "absolute", left, top, transform: "translate(-50%, -50%)", width: 18, height: 18, padding: 0, border: "none", background: "transparent", cursor: "pointer", zIndex: 2 }}
+      >
+        <span className="db-pin-dot" />
+      </motion.button>
+    );
+  }
+
   return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: "4 / 5", perspective: 1200 }}>
-      <AnimatePresence custom={dir} initial={false} mode="popLayout">
+    <motion.div style={{ position: "absolute", left, top, transform: "translate(-50%, -100%)", zIndex: 6 }}>
+      <motion.div className="db-pin-bob" animate={{ y: [0, -5, 0] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}>
         <motion.div
-          key={c.slug}
-          custom={dir}
-          variants={photoVariants}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{ type: "spring", stiffness: 200, damping: 26 }}
-          style={{
-            position: "absolute", inset: 0, transformOrigin: "50% 180%",
-            border: `1px solid ${palette.ink}`, background: palette.wash, overflow: "hidden",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "8px 8px 0 rgba(26,23,20,0.12)",
-          }}
+          className="db-pin-head"
+          initial={{ rotateY: -65, scale: 0.7, opacity: 0 }}
+          animate={{ rotateY: 0, scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 130, damping: 15 }}
         >
           {!errored ? (
-            <img
-              src={c.photo}
-              alt={`${c.origin} ${c.name}`}
-              onError={() => setErrored(true)}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            />
+            <img src={coffee.photo} alt={`${coffee.origin} ${coffee.name}`} onError={() => setErrored(true)} />
           ) : (
-            <div style={{ textAlign: "center", padding: 24 }}>
-              <Hexagon size={56} stroke={palette.honey} sw={1.6} />
-              <div style={{ marginTop: 14, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", color: palette.honey }}>{c.origin}</div>
-              <div style={{ fontSize: 22, marginTop: 4 }}>{c.name}</div>
+            <div className="db-pin-fallback">
+              <Hexagon size={34} stroke={palette.honey} sw={1.6} />
+              <span>{coffee.origin}</span>
             </div>
           )}
         </motion.div>
-      </AnimatePresence>
+        <span className="db-pin-tail" />
+      </motion.div>
+      <span className="db-pin-shadow" />
+    </motion.div>
+  );
+}
+
+// ---- The big zooming world stage ----
+function WorldStage({ active, onSelect }: { active: number; onSelect: (i: number) => void }) {
+  const camX = useSpring(clamp(originFrac[active].fx, HALF_W, 1 - HALF_W), CAM_SPRING);
+  const camY = useSpring(clamp(originFrac[active].fy, HALF_H, 1 - HALF_H), CAM_SPRING);
+
+  useEffect(() => {
+    camX.set(clamp(originFrac[active].fx, HALF_W, 1 - HALF_W));
+    camY.set(clamp(originFrac[active].fy, HALF_H, 1 - HALF_H));
+  }, [active, camX, camY]);
+
+  const tx = useTransform(camX, (v) => (0.5 - v * Z) * 100);
+  const ty = useTransform(camY, (v) => (V_CENTER - v * Z) * 100);
+  const camTransform = useMotionTemplate`translate(${tx}%, ${ty}%) scale(${Z})`;
+
+  return (
+    <div className="db-stage" style={{ aspectRatio: String(1 / STAGE_ASPECT) }}>
+      <motion.div className="db-cam" style={{ aspectRatio: `${MAP_W} / ${MAP_H}`, transform: camTransform, transformOrigin: "0 0" }}>
+        <HexWorldMap active={active} />
+      </motion.div>
+      <div className="db-pins">
+        {coffees.map((co, i) => (
+          <Pin key={co.slug} camX={camX} camY={camY} fx={originFrac[i].fx} fy={originFrac[i].fy} active={i === active} coffee={co} onSelect={() => onSelect(i)} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function Hero() {
   const [active, setActive] = useState(0);
-  const [dir, setDir] = useState(1);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setDir(1);
-      setActive((a) => (a + 1) % coffees.length);
-    }, 3800);
+    const id = setInterval(() => setActive((a) => (a + 1) % coffees.length), 4400);
     return () => clearInterval(id);
   }, []);
-
-  const go = (i: number) => {
-    setDir(i > active || (active === coffees.length - 1 && i === 0) ? 1 : -1);
-    setActive(i);
-  };
 
   const c = coffees[active];
 
   return (
     <header className="db-hero">
-      {/* LEFT — hexagon world map with the photo floating beside it */}
-      <div className="db-hero-visual">
-        <div className="db-hero-head">
-          <span className="db-eyebrow">This week, sourced from</span>
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={c.country}
-              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
-              style={{ fontSize: 15, fontWeight: 700, color: palette.honey }}
-            >
-              {c.country}
-            </motion.span>
-          </AnimatePresence>
-        </div>
+      <div className="db-hero-head">
+        <span className="db-eyebrow">This week, sourced from</span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={c.country}
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
+            style={{ fontSize: 16, fontWeight: 700, color: palette.honey }}
+          >
+            {c.country}
+          </motion.span>
+        </AnimatePresence>
+      </div>
 
-        <div className="db-hero-body">
-          <div className="db-hero-map"><HexWorldMap active={active} /></div>
-          <div className="db-hero-photo"><RotaryPhoto active={active} dir={dir} /></div>
-        </div>
+      <WorldStage active={active} onSelect={setActive} />
 
-        {/* caption + selector dots */}
-        <div className="db-hero-cap">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={c.slug}
-              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
-            >
-              <div style={{ fontSize: 18, fontWeight: 700 }}>{c.origin} {c.name}</div>
-              <div style={{ fontSize: 13, color: palette.muted }}>{c.notes} · {c.roast}</div>
-            </motion.div>
-          </AnimatePresence>
-          <div style={{ display: "flex", gap: 8 }}>
-            {coffees.map((co, i) => (
-              <button
-                key={co.slug}
-                aria-label={`Show ${co.origin}`}
-                onClick={() => go(i)}
-                style={{
-                  width: 11, height: 11, padding: 0, cursor: "pointer", background: i === active ? palette.honey : "transparent",
-                  border: `1.4px solid ${i === active ? palette.honey : palette.muted}`, transform: "rotate(45deg)",
-                }}
-              />
-            ))}
-          </div>
+      <div className="db-hero-cap">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={c.slug}
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
+          >
+            <div style={{ fontSize: 19, fontWeight: 700 }}>{c.origin} {c.name}</div>
+            <div style={{ fontSize: 13, color: palette.muted }}>{c.notes} · {c.roast}</div>
+          </motion.div>
+        </AnimatePresence>
+        <div style={{ display: "flex", gap: 8 }}>
+          {coffees.map((co, i) => (
+            <button
+              key={co.slug}
+              aria-label={`Show ${co.origin}`}
+              onClick={() => setActive(i)}
+              style={{
+                width: 11, height: 11, padding: 0, cursor: "pointer", background: i === active ? palette.honey : "transparent",
+                border: `1.4px solid ${i === active ? palette.honey : palette.muted}`, transform: "rotate(45deg)",
+              }}
+            />
+          ))}
         </div>
       </div>
 
-      {/* RIGHT — headline + copy */}
-      <div className="db-hero-copy">
-        <div className="db-eyebrow">Fresh single-origin · delivered weekly</div>
-        <h1 style={{ fontSize: "clamp(36px, 4.6vw, 60px)", lineHeight: 1.06, margin: "18px 0 0", letterSpacing: -1.4, fontWeight: 700 }}>
-          A new coffee at <span style={{ fontStyle: "italic", color: palette.honey }}>first light</span>, every week.
-        </h1>
-        <p style={{ fontSize: "clamp(16px, 1.6vw, 19px)", color: palette.muted, maxWidth: 460, margin: "22px 0 0", lineHeight: 1.65 }}>
-          Single-origin coffee, roasted the day before it ships and delivered straight to your door. From around the world, one week at a time.
-        </p>
-        <div style={{ marginTop: 30, display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <button className="db-btn db-btn--solid" onClick={() => alert("signup")}>Start your subscription</button>
-          <a href="#how" className="db-btn db-btn--ghost">See how it works</a>
-        </div>
-      </div>
+      <p className="db-hero-tagline">
+        Single-origin coffee, roasted the day before it ships and delivered straight to your door. From around the world, one week at a time.
+      </p>
     </header>
   );
 }
@@ -326,24 +329,6 @@ function HowItWorks() {
             <h3 style={{ margin: "16px 0 8px", fontSize: 20 }}>{s.title}</h3>
             <p style={{ margin: 0, color: palette.muted, lineHeight: 1.6, fontSize: 15 }}>{s.body}</p>
           </div>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-function ThisWeek() {
-  return (
-    <Section id="coffees" kicker="This week's coffees" title="On the roaster right now" wash>
-      <div className="db-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))" }}>
-        {coffees.map((c) => (
-          <motion.div key={c.name} className="db-box db-box--paper" whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300, damping: 22 }}>
-            <div style={{ marginBottom: 16 }}><Hexagon size={34} stroke={palette.honey} sw={1.6} /></div>
-            <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: palette.honey }}>{c.origin}</div>
-            <h3 style={{ margin: "6px 0 10px", fontSize: 23 }}>{c.name}</h3>
-            <p style={{ margin: 0, color: palette.muted, fontSize: 15 }}>{c.notes}</p>
-            <span className="db-chip">{c.roast}</span>
-          </motion.div>
         ))}
       </div>
     </Section>
@@ -383,7 +368,17 @@ function Testimonials() {
           <figure key={t.who} className="db-box db-box--paper" style={{ margin: 0 }}>
             <div aria-hidden style={{ fontSize: 40, lineHeight: 0.5, color: palette.hair, fontFamily: "Georgia" }}>“</div>
             <blockquote style={{ margin: "10px 0 16px", fontSize: 19, lineHeight: 1.55, fontStyle: "italic" }}>{t.quote}</blockquote>
-            <figcaption style={{ color: palette.muted, fontSize: 14, fontWeight: 600 }}>— {t.who}</figcaption>
+            <figcaption style={{ display: "flex", alignItems: "center", gap: 10, color: palette.muted, fontSize: 14, fontWeight: 600 }}>
+              <img
+                src={t.photo}
+                alt={t.who}
+                width={40}
+                height={40}
+                loading="lazy"
+                style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", border: `2px solid ${palette.hair}`, flex: "0 0 auto" }}
+              />
+              — {t.who}
+            </figcaption>
           </figure>
         ))}
       </div>
@@ -486,23 +481,42 @@ function GlobalStyle() {
       @media (max-width: 620px) { .db-nav-links { display: none; } }
 
       .db-hero {
-        max-width: 1180px; margin: 0 auto; padding: clamp(24px, 4vw, 52px) clamp(20px, 5vw, 56px) clamp(40px, 6vw, 72px);
-        display: grid; grid-template-columns: 1.55fr 1fr; gap: clamp(28px, 4vw, 56px); align-items: center;
+        max-width: 1080px; margin: 0 auto; padding: clamp(16px, 3vw, 40px) clamp(20px, 5vw, 56px) clamp(40px, 6vw, 72px);
+        display: flex; flex-direction: column; gap: 16px;
       }
-      .db-hero-copy { align-self: center; }
-      .db-hero-visual { display: flex; flex-direction: column; gap: 16px; }
       .db-hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-      .db-hero-body { display: flex; align-items: center; gap: clamp(16px, 2.5vw, 26px); }
-      .db-hero-map { flex: 1 1 auto; min-width: 0; }
-      .db-hero-photo { flex: 0 0 clamp(148px, 17vw, 196px); }
       .db-hero-cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-      @media (max-width: 880px) {
-        .db-hero { grid-template-columns: 1fr; }
-        .db-hero-copy { order: -1; }
+      .db-hero-tagline {
+        margin: 6px auto 0; max-width: 600px; text-align: center;
+        font-size: clamp(16px, 1.8vw, 20px); line-height: 1.65; color: ${palette.muted};
       }
-      @media (max-width: 480px) {
-        .db-hero-body { flex-direction: column; }
-        .db-hero-photo { flex-basis: auto; width: 62%; align-self: center; }
+
+      /* zooming world map stage */
+      .db-stage { position: relative; width: 100%; overflow: hidden; background: ${palette.paper}; }
+      .db-cam { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
+      .db-pins { position: absolute; inset: 0; perspective: 1000px; pointer-events: none; }
+      .db-pins > * { pointer-events: auto; }
+
+      .db-pin-dot {
+        display: block; width: 12px; height: 12px; transform: rotate(45deg);
+        background: ${palette.honey}; box-shadow: 0 0 0 2px #fff, 0 0 0 3px ${palette.honey};
+      }
+      .db-pin-bob { position: relative; display: flex; flex-direction: column; align-items: center; transform-style: preserve-3d; }
+      .db-pin-head {
+        width: clamp(82px, 11vw, 124px); aspect-ratio: 5 / 6; border-radius: 16px; overflow: hidden;
+        background: ${palette.wash}; box-shadow: 0 14px 26px rgba(26,23,20,0.28); transform-style: preserve-3d;
+      }
+      .db-pin-head img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .db-pin-fallback { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+      .db-pin-fallback span { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: ${palette.honey}; }
+      .db-pin-tail {
+        width: 0; height: 0; margin-top: -1px;
+        border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 12px solid ${palette.honey};
+        filter: drop-shadow(0 5px 4px rgba(26,23,20,0.22));
+      }
+      .db-pin-shadow {
+        position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
+        width: 46px; height: 11px; border-radius: 50%; background: rgba(26,23,20,0.28); filter: blur(4px);
       }
 
       .db-grid { display: grid; gap: 18px; }
