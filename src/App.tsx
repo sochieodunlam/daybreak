@@ -55,7 +55,7 @@ const faqs = [
 
 export default function App() {
   return (
-    <div style={{ background: palette.paper, color: palette.ink, minHeight: "100vh", fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+    <div style={{ background: palette.paper, color: palette.ink, minHeight: "100vh", fontFamily: "'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif" }}>
       <GlobalStyle />
       <Nav />
       <Hero />
@@ -389,19 +389,21 @@ function Testimonials() {
 function Story() {
   return (
     <section>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "clamp(48px, 8vw, 96px) clamp(20px, 5vw, 56px)", textAlign: "center" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-          <HoneycombCluster width={180} color={palette.hair} />
+      <div className="db-story">
+        <div className="db-story-text">
+          <div className="db-eyebrow">Our story</div>
+          <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", margin: "12px 0 20px", letterSpacing: -0.6, fontWeight: 700 }}>
+            Two friends, one line at a café, a lot of good coffee.
+          </h2>
+          <p style={{ fontSize: 18, lineHeight: 1.75, color: palette.muted, margin: 0 }}>
+            Daybreak started in 2019. We believe coffee should be fresh, traceable, and a little bit fun. We work directly
+            with farmers, roast in small batches, and ship in compostable bags. There's also a roastery dog named Marlowe —
+            he supervises on Tuesdays.
+          </p>
         </div>
-        <div className="db-eyebrow">Our story</div>
-        <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", margin: "12px 0 20px", letterSpacing: -0.6, fontWeight: 700 }}>
-          Two friends, one line at a café, a lot of good coffee.
-        </h2>
-        <p style={{ fontSize: 18, lineHeight: 1.75, color: palette.muted, margin: 0 }}>
-          Daybreak started in 2019. We believe coffee should be fresh, traceable, and a little bit fun. We work directly
-          with farmers, roast in small batches, and ship in compostable bags. There's also a roastery dog named Marlowe —
-          he supervises on Tuesdays.
-        </p>
+        <div className="db-story-photo">
+          <img src="/daybreak-assets/founders.jpg" alt="Daybreak's two founders" loading="lazy" />
+        </div>
       </div>
     </section>
   );
@@ -468,7 +470,8 @@ function GlobalStyle() {
         display: inline-block; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
         font-weight: 700; color: ${palette.ink};
       }
-      .db-nav { max-width: 1180px; margin: 0 auto; padding: 24px clamp(20px, 5vw, 56px) 8px; }
+      .db-nav { max-width: 1180px; margin: 0 auto; padding: 24px clamp(20px, 5vw, 56px) 8px; font-family: 'Georgia', 'Times New Roman', serif; }
+      .db-nav .db-btn { font-family: 'Georgia', 'Times New Roman', serif; }
       .db-logo { display: block; margin: 0 auto; height: clamp(96px, 12vw, 150px); width: auto; }
       .db-nav-row { display: flex; align-items: center; justify-content: center; gap: clamp(18px, 3vw, 30px); margin-top: 12px; flex-wrap: wrap; }
       .db-nav-links { display: flex; gap: 26px; }
@@ -489,6 +492,21 @@ function GlobalStyle() {
       .db-hero-tagline {
         margin: 6px auto 0; max-width: 600px; text-align: center;
         font-size: clamp(16px, 1.8vw, 20px); line-height: 1.65; color: ${palette.muted};
+      }
+
+      /* our story — text left, founder photo right */
+      .db-story {
+        max-width: 1080px; margin: 0 auto; padding: clamp(48px, 8vw, 96px) clamp(20px, 5vw, 56px);
+        display: flex; align-items: center; gap: clamp(28px, 5vw, 64px);
+      }
+      .db-story-text { flex: 1 1 50%; }
+      .db-story-photo { flex: 1 1 50%; }
+      .db-story-photo img {
+        width: 100%; height: 100%; max-height: 420px; object-fit: cover; display: block;
+      }
+      @media (max-width: 720px) {
+        .db-story { flex-direction: column; text-align: center; }
+        .db-story-photo { width: 100%; }
       }
 
       /* zooming world map stage */

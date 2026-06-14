@@ -15,3 +15,9 @@ Second steps:
 Third steps:
 - adding more focus to the coffee and the map rather than the words
 - add faces to the reviews- makes it seem more reputable
+
+
+Fixes from claude:
+- removed dropshadow on founder photo, unrounded edges. 
+- removed and changed the main hero almost entirely. 
+- stock images as social proof
