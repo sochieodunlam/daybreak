@@ -100,6 +100,25 @@ function HoneycombCluster({ width = 260, color = palette.hair }: { width?: numbe
   );
 }
 
+// ---- Background line-art accents (subtle, non-interactive) ----
+function RectStack({ size = 92, color = palette.ink, sw = 1.3 }: { size?: number; color?: string; sw?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden style={{ display: "block" }}>
+      <rect x="3" y="3" width="60" height="60" fill="none" stroke={color} strokeWidth={sw} />
+      <rect x="20" y="20" width="60" height="60" fill="none" stroke={color} strokeWidth={sw} />
+      <rect x="37" y="37" width="60" height="60" fill="none" stroke={color} strokeWidth={sw} />
+    </svg>
+  );
+}
+
+function Decor({ children, style }: { children: React.ReactNode; style: React.CSSProperties }) {
+  return (
+    <div className="db-decor" aria-hidden style={{ position: "absolute", ...style }}>
+      {children}
+    </div>
+  );
+}
+
 function Nav() {
   return (
     <nav className="db-nav">
@@ -251,19 +270,19 @@ function Hero() {
   const goTo = (i: number) => setStep((s) => s + ((i - (((s % n) + n) % n) + n) % n));
 
   return (
-    <header className="db-hero">
-      <div className="db-hero-head">
-        <span className="db-eyebrow">This week, sourced from</span>
-        <AnimatePresence mode="wait">
-          <motion.span
-            key={c.country}
-            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
-            style={{ fontSize: 16, fontWeight: 700, color: palette.honey }}
-          >
-            {c.country}
-          </motion.span>
-        </AnimatePresence>
-      </div>
+    <div className="db-hero-wrap">
+      {/* line-art accents filling the side whitespace of the first section */}
+      <Decor style={{ left: "clamp(12px, 4vw, 64px)", top: 70 }}><HoneycombCluster width={132} color={palette.ink} /></Decor>
+      <Decor style={{ left: "clamp(20px, 5vw, 88px)", top: 300 }}><RectStack size={84} /></Decor>
+      <Decor style={{ left: "clamp(12px, 3vw, 56px)", top: 470 }}><HoneycombCluster width={104} color={palette.ink} /></Decor>
+      <Decor style={{ right: "clamp(12px, 4vw, 64px)", top: 120 }}><HoneycombCluster width={116} color={palette.ink} /></Decor>
+      <Decor style={{ right: "clamp(20px, 5vw, 92px)", top: 330 }}><RectStack size={92} /></Decor>
+      <Decor style={{ right: "clamp(12px, 3vw, 52px)", top: 500 }}><HoneycombCluster width={130} color={palette.ink} /></Decor>
+
+      <header className="db-hero">
+      <p className="db-hero-blurb">
+        A new single-origin coffee, freshly roasted, delivered to your door every week.
+      </p>
 
       <div className="db-hero-grid">
         <MapStage active={active} />
@@ -316,7 +335,7 @@ function Section({ id, kicker, title, children, wash }: { id?: string; kicker: s
 
 function HowItWorks() {
   return (
-    <Section id="how" kicker="How it works" title="From farm to your kitchen in four steps">
+    <Section id="how" kicker="How it works" title="From farm to your kitchen in four steps" wash>
       <div className="db-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
         {steps.map((s) => (
           <div key={s.n} className="db-box">
@@ -470,10 +489,10 @@ function GlobalStyle() {
         display: inline-block; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
         font-weight: 700; color: ${palette.ink};
       }
-      .db-nav { max-width: 1180px; margin: 0 auto; padding: 24px clamp(20px, 5vw, 56px) 8px; font-family: 'Georgia', 'Times New Roman', serif; }
+      .db-nav { max-width: 1180px; margin: 0 auto; padding: 18px clamp(20px, 5vw, 56px); font-family: 'Georgia', 'Times New Roman', serif; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
       .db-nav .db-btn { font-family: 'Georgia', 'Times New Roman', serif; }
-      .db-logo { display: block; margin: 0 auto; height: clamp(96px, 12vw, 150px); width: auto; }
-      .db-nav-row { display: flex; align-items: center; justify-content: center; gap: clamp(18px, 3vw, 30px); margin-top: 12px; flex-wrap: wrap; }
+      .db-logo { display: block; height: clamp(48px, 6vw, 76px); width: auto; }
+      .db-nav-row { display: flex; align-items: center; gap: clamp(18px, 3vw, 30px); }
       .db-nav-links { display: flex; gap: 26px; }
       .db-nav-link {
         font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
@@ -487,7 +506,10 @@ function GlobalStyle() {
         max-width: 1080px; margin: 0 auto; padding: clamp(16px, 3vw, 40px) clamp(20px, 5vw, 56px) clamp(40px, 6vw, 72px);
         display: flex; flex-direction: column; gap: 16px;
       }
-      .db-hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .db-hero-blurb {
+        margin: 0 auto; max-width: 720px; text-align: center;
+        font-size: clamp(20px, 2.6vw, 30px); line-height: 1.35; font-weight: 600; letter-spacing: -0.4px; color: ${palette.ink};
+      }
       .db-hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(20px, 3vw, 44px); align-items: center; }
       @media (max-width: 820px) { .db-hero-grid { grid-template-columns: 1fr; gap: clamp(16px, 5vw, 30px); } }
       .db-hero-cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -511,8 +533,12 @@ function GlobalStyle() {
         .db-story-photo { width: 100%; }
       }
 
-      /* zoomed-out world map stage (pans on its own) */
-      .db-stage { position: relative; width: 100%; overflow: hidden; background: ${palette.paper}; }
+      /* zoomed-out world map stage (pans on its own); edges feather into the page */
+      .db-stage {
+        position: relative; width: 100%; overflow: hidden; background: ${palette.paper};
+        -webkit-mask-image: radial-gradient(125% 135% at 50% 50%, #000 58%, transparent 100%);
+        mask-image: radial-gradient(125% 135% at 50% 50%, #000 58%, transparent 100%);
+      }
       .db-cam { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
 
       /* turntable of coffee bags (rotates on its own, separate from the map) */
@@ -521,7 +547,7 @@ function GlobalStyle() {
       .db-tt-card { position: relative; will-change: transform, opacity; }
       .db-tt-card img {
         display: block; height: clamp(210px, 30vw, 320px); width: auto;
-        filter: drop-shadow(0 20px 16px rgba(26,23,20,0.26));
+        filter: drop-shadow(0 10px 12px rgba(26,23,20,0.12));
       }
       .db-tt-fallback { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: clamp(210px, 30vw, 320px); }
       .db-tt-fallback span { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: ${palette.honey}; }
