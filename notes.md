@@ -21,3 +21,4 @@ Fixes from claude:
 - removed dropshadow on founder photo, unrounded edges. 
 - removed and changed the main hero almost entirely. 
 - stock images as social proof
+- deleted extra uneccesary words

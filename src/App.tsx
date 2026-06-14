@@ -55,7 +55,7 @@ const faqs = [
 
 export default function App() {
   return (
-    <div style={{ background: palette.paper, color: palette.ink, minHeight: "100vh", fontFamily: "'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif" }}>
+    <div style={{ background: palette.paper, color: palette.ink, minHeight: "100vh", fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif", fontWeight: 400 }}>
       <GlobalStyle />
       <Nav />
       <Hero />
@@ -123,15 +123,14 @@ const hexPoints = (x: number, y: number, r: number) =>
     return `${(x + r * Math.cos(a)).toFixed(1)},${(y + r * Math.sin(a)).toFixed(1)}`;
   }).join(" ");
 
-// Camera geometry for the zoom/pan stage.
+// Camera geometry for the zoomed-out world map (it pans gently to the active origin).
 const MAP_ASPECT = MAP_H / MAP_W;        // map is ~2.6 : 1
-const STAGE_ASPECT = 0.62;               // visible window height / width
-const Z = 3.2;                           // zoom factor (smaller window = closer)
-const K = (Z * MAP_ASPECT) / STAGE_ASPECT;          // vertical px factor for pins
+const STAGE_ASPECT = 0.58;               // visible window height / width
+const Z = 1.6;                           // zoom factor — low so most of the world stays in view
 const V_CENTER = STAGE_ASPECT / (2 * MAP_ASPECT);   // vertical centering constant
 const HALF_W = 0.5 / Z;                              // half visible width (map fraction)
 const HALF_H = STAGE_ASPECT / (2 * Z * MAP_ASPECT);  // half visible height (map fraction)
-const CAM_SPRING = { stiffness: 48, damping: 17, mass: 1.1 };
+const CAM_SPRING = { stiffness: 42, damping: 18, mass: 1.1 };
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 // fractional (0..1) position of each origin within the map
@@ -143,7 +142,7 @@ const originFrac = coffees.map((c) => {
 function HexWorldMap({ active }: { active: number }) {
   const c = coffees[active];
   const pt = projectLonLat(c.lon, c.lat);
-  const R = 44; // honey tint radius around the active origin
+  const R = 50; // honey tint radius around the active origin
   return (
     <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style={{ display: "block" }} aria-hidden>
       {HEXES.map(([x, y], i) => {
@@ -158,68 +157,26 @@ function HexWorldMap({ active }: { active: number }) {
           />
         );
       })}
-      {/* tiny location tip under each pin */}
+      {/* inactive origin markers */}
       {coffees.map((co, i) => {
+        if (i === active) return null;
         const p = projectLonLat(co.lon, co.lat);
-        const act = i === active;
-        return <circle key={co.slug} cx={p.x} cy={p.y} r={act ? 2.6 : 2} fill={act ? palette.ink : "#fff"} stroke={palette.ink} strokeWidth={act ? 0 : 1} opacity={act ? 1 : 0.5} />;
+        return <circle key={co.slug} cx={p.x} cy={p.y} r={2.4} fill="#fff" stroke={palette.ink} strokeWidth={1} opacity={0.5} />;
       })}
+      {/* active origin: pulsing honey marker */}
+      <motion.circle
+        cx={pt.x} cy={pt.y} r={5} fill="none" stroke={palette.honey} strokeWidth={1.6}
+        initial={{ scale: 1, opacity: 0.6 }} animate={{ scale: [1, 3], opacity: [0.6, 0] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+        style={{ transformOrigin: `${pt.x}px ${pt.y}px` }}
+      />
+      <circle cx={pt.x} cy={pt.y} r={3.8} fill={palette.honey} stroke="#fff" strokeWidth={1.4} />
     </svg>
   );
 }
 
-// ---- A coffee "pin" planted on the map, tracking its location as the camera moves ----
-function Pin({ camX, camY, fx, fy, active, coffee, onSelect }: {
-  camX: MotionValue<number>; camY: MotionValue<number>; fx: number; fy: number;
-  active: boolean; coffee: (typeof coffees)[number]; onSelect: () => void;
-}) {
-  const leftV = useTransform(camX, (v) => 50 + (fx - v) * Z * 100);
-  const topV = useTransform(camY, (v) => 50 + (fy - v) * K * 100);
-  const left = useMotionTemplate`${leftV}%`;
-  const top = useMotionTemplate`${topV}%`;
-  const [errored, setErrored] = useState(false);
-  useEffect(() => setErrored(false), [coffee.slug, active]);
-
-  if (!active) {
-    return (
-      <motion.button
-        onClick={onSelect}
-        aria-label={`Show ${coffee.country}`}
-        whileHover={{ scale: 1.3 }}
-        style={{ position: "absolute", left, top, transform: "translate(-50%, -50%)", width: 18, height: 18, padding: 0, border: "none", background: "transparent", cursor: "pointer", zIndex: 2 }}
-      >
-        <span className="db-pin-dot" />
-      </motion.button>
-    );
-  }
-
-  return (
-    <motion.div style={{ position: "absolute", left, top, transform: "translate(-50%, -100%)", zIndex: 6 }}>
-      <motion.div className="db-pin-bob" animate={{ y: [0, -5, 0] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}>
-        <motion.div
-          className="db-pin-head"
-          initial={{ rotateY: -65, scale: 0.7, opacity: 0 }}
-          animate={{ rotateY: 0, scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 130, damping: 15 }}
-        >
-          {!errored ? (
-            <img src={coffee.photo} alt={`${coffee.origin} ${coffee.name}`} onError={() => setErrored(true)} />
-          ) : (
-            <div className="db-pin-fallback">
-              <Hexagon size={34} stroke={palette.honey} sw={1.6} />
-              <span>{coffee.origin}</span>
-            </div>
-          )}
-        </motion.div>
-        <span className="db-pin-tail" />
-      </motion.div>
-      <span className="db-pin-shadow" />
-    </motion.div>
-  );
-}
-
-// ---- The big zooming world stage ----
-function WorldStage({ active, onSelect }: { active: number; onSelect: (i: number) => void }) {
+// ---- Zoomed-out world map that pans to the active origin (moves on its own) ----
+function MapStage({ active }: { active: number }) {
   const camX = useSpring(clamp(originFrac[active].fx, HALF_W, 1 - HALF_W), CAM_SPRING);
   const camY = useSpring(clamp(originFrac[active].fy, HALF_H, 1 - HALF_H), CAM_SPRING);
 
@@ -237,24 +194,61 @@ function WorldStage({ active, onSelect }: { active: number; onSelect: (i: number
       <motion.div className="db-cam" style={{ aspectRatio: `${MAP_W} / ${MAP_H}`, transform: camTransform, transformOrigin: "0 0" }}>
         <HexWorldMap active={active} />
       </motion.div>
-      <div className="db-pins">
-        {coffees.map((co, i) => (
-          <Pin key={co.slug} camX={camX} camY={camY} fx={originFrac[i].fx} fy={originFrac[i].fy} active={i === active} coffee={co} onSelect={() => onSelect(i)} />
-        ))}
-      </div>
+    </div>
+  );
+}
+
+// ---- Turntable: coffee bags rotating around a circle, independent of the map ----
+const TT_STEP = (2 * Math.PI) / coffees.length;
+const TT_RX = 150;                          // horizontal radius of the turntable (px)
+const TT_SPRING = { stiffness: 40, damping: 14, mass: 1 };
+const depth01 = (a: number) => (Math.cos(a) + 1) / 2; // 1 = front, 0 = back
+
+function TurntableItem({ turn, index, coffee }: { turn: MotionValue<number>; index: number; coffee: (typeof coffees)[number] }) {
+  const theta = useTransform(turn, (t) => index * TT_STEP - t);
+  const x = useTransform(theta, (a) => Math.sin(a) * TT_RX);
+  const scale = useTransform(theta, (a) => 0.4 + 0.6 * depth01(a));
+  const opacity = useTransform(theta, (a) => 0.12 + 0.88 * depth01(a));
+  const zIndex = useTransform(theta, (a) => Math.round(depth01(a) * 100));
+  const [errored, setErrored] = useState(false);
+
+  return (
+    <div className="db-tt-slot">
+      <motion.div className="db-tt-card" style={{ x, scale, opacity, zIndex }}>
+        {!errored ? (
+          <img src={coffee.photo} alt={`${coffee.origin} ${coffee.name}`} onError={() => setErrored(true)} />
+        ) : (
+          <div className="db-tt-fallback"><Hexagon size={40} stroke={palette.honey} sw={1.6} /><span>{coffee.origin}</span></div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function Turntable({ step }: { step: number }) {
+  const turn = useSpring(step * TT_STEP, TT_SPRING);
+  useEffect(() => { turn.set(step * TT_STEP); }, [step, turn]);
+  return (
+    <div className="db-turntable" aria-label="This week's coffees">
+      {coffees.map((co, i) => (
+        <TurntableItem key={co.slug} turn={turn} index={i} coffee={co} />
+      ))}
     </div>
   );
 }
 
 function Hero() {
-  const [active, setActive] = useState(0);
+  const n = coffees.length;
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => setActive((a) => (a + 1) % coffees.length), 4400);
+    const id = setInterval(() => setStep((s) => s + 1), 3000);
     return () => clearInterval(id);
   }, []);
 
+  const active = ((step % n) + n) % n;
   const c = coffees[active];
+  const goTo = (i: number) => setStep((s) => s + ((i - (((s % n) + n) % n) + n) % n));
 
   return (
     <header className="db-hero">
@@ -271,7 +265,10 @@ function Hero() {
         </AnimatePresence>
       </div>
 
-      <WorldStage active={active} onSelect={setActive} />
+      <div className="db-hero-grid">
+        <MapStage active={active} />
+        <Turntable step={step} />
+      </div>
 
       <div className="db-hero-cap">
         <AnimatePresence mode="wait">
@@ -288,7 +285,7 @@ function Hero() {
             <button
               key={co.slug}
               aria-label={`Show ${co.origin}`}
-              onClick={() => setActive(i)}
+              onClick={() => goTo(i)}
               style={{
                 width: 11, height: 11, padding: 0, cursor: "pointer", background: i === active ? palette.honey : "transparent",
                 border: `1.4px solid ${i === active ? palette.honey : palette.muted}`, transform: "rotate(45deg)",
@@ -310,7 +307,7 @@ function Section({ id, kicker, title, children, wash }: { id?: string; kicker: s
     <section id={id} style={{ background: wash ? palette.wash : "transparent" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(44px, 7vw, 88px) clamp(20px, 5vw, 56px)" }}>
         <div className="db-eyebrow">{kicker}</div>
-        <h2 style={{ fontSize: "clamp(26px, 4vw, 38px)", margin: "10px 0 36px", letterSpacing: -0.8, fontWeight: 700 }}>{title}</h2>
+        <h2 style={{ fontSize: "clamp(26px, 4vw, 38px)", margin: "10px 0 36px", letterSpacing: -0.8, fontWeight: 500 }}>{title}</h2>
         {children}
       </div>
     </section>
@@ -392,7 +389,7 @@ function Story() {
       <div className="db-story">
         <div className="db-story-text">
           <div className="db-eyebrow">Our story</div>
-          <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", margin: "12px 0 20px", letterSpacing: -0.6, fontWeight: 700 }}>
+          <h2 style={{ fontSize: "clamp(24px, 4vw, 36px)", margin: "12px 0 20px", letterSpacing: -0.6, fontWeight: 500 }}>
             Two friends, one line at a café, a lot of good coffee.
           </h2>
           <p style={{ fontSize: 18, lineHeight: 1.75, color: palette.muted, margin: 0 }}>
@@ -402,7 +399,7 @@ function Story() {
           </p>
         </div>
         <div className="db-story-photo">
-          <img src="/daybreak-assets/founders.jpg" alt="Daybreak's two founders" loading="lazy" />
+          <img src="/daybreak-assets/founders.jpg" alt="Daybreak's two founders and their roastery dog" loading="lazy" />
         </div>
       </div>
     </section>
@@ -412,8 +409,10 @@ function Story() {
 function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <Section id="faq" kicker="FAQ" title="Questions, answered" wash>
-      <div style={{ maxWidth: 760, border: `1px solid ${palette.line}`, background: palette.paper }}>
+    <section id="faq" style={{ background: palette.wash }}>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "clamp(44px, 7vw, 88px) clamp(20px, 5vw, 56px)" }}>
+        <h2 style={{ fontSize: "clamp(36px, 6vw, 56px)", margin: "0 0 32px", letterSpacing: -1.2, fontWeight: 500, textAlign: "center" }}>FAQ</h2>
+        <div style={{ border: `1px solid ${palette.line}`, background: palette.paper }}>
         {faqs.map((item, i) => {
           const isOpen = open === i;
           return (
@@ -432,8 +431,9 @@ function FAQ() {
             </div>
           );
         })}
+        </div>
       </div>
-    </Section>
+    </section>
   );
 }
 
@@ -488,6 +488,8 @@ function GlobalStyle() {
         display: flex; flex-direction: column; gap: 16px;
       }
       .db-hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .db-hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(20px, 3vw, 44px); align-items: center; }
+      @media (max-width: 820px) { .db-hero-grid { grid-template-columns: 1fr; gap: clamp(16px, 5vw, 30px); } }
       .db-hero-cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
       .db-hero-tagline {
         margin: 6px auto 0; max-width: 600px; text-align: center;
@@ -509,33 +511,20 @@ function GlobalStyle() {
         .db-story-photo { width: 100%; }
       }
 
-      /* zooming world map stage */
+      /* zoomed-out world map stage (pans on its own) */
       .db-stage { position: relative; width: 100%; overflow: hidden; background: ${palette.paper}; }
       .db-cam { position: absolute; top: 0; left: 0; width: 100%; will-change: transform; }
-      .db-pins { position: absolute; inset: 0; perspective: 1000px; pointer-events: none; }
-      .db-pins > * { pointer-events: auto; }
 
-      .db-pin-dot {
-        display: block; width: 12px; height: 12px; transform: rotate(45deg);
-        background: ${palette.honey}; box-shadow: 0 0 0 2px #fff, 0 0 0 3px ${palette.honey};
+      /* turntable of coffee bags (rotates on its own, separate from the map) */
+      .db-turntable { position: relative; width: 100%; height: clamp(240px, 34vw, 360px); }
+      .db-tt-slot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+      .db-tt-card { position: relative; will-change: transform, opacity; }
+      .db-tt-card img {
+        display: block; height: clamp(210px, 30vw, 320px); width: auto;
+        filter: drop-shadow(0 20px 16px rgba(26,23,20,0.26));
       }
-      .db-pin-bob { position: relative; display: flex; flex-direction: column; align-items: center; transform-style: preserve-3d; }
-      .db-pin-head {
-        width: clamp(82px, 11vw, 124px); aspect-ratio: 5 / 6; border-radius: 16px; overflow: hidden;
-        background: ${palette.wash}; box-shadow: 0 14px 26px rgba(26,23,20,0.28); transform-style: preserve-3d;
-      }
-      .db-pin-head img { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .db-pin-fallback { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-      .db-pin-fallback span { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: ${palette.honey}; }
-      .db-pin-tail {
-        width: 0; height: 0; margin-top: -1px;
-        border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 12px solid ${palette.honey};
-        filter: drop-shadow(0 5px 4px rgba(26,23,20,0.22));
-      }
-      .db-pin-shadow {
-        position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%);
-        width: 46px; height: 11px; border-radius: 50%; background: rgba(26,23,20,0.28); filter: blur(4px);
-      }
+      .db-tt-fallback { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: clamp(210px, 30vw, 320px); }
+      .db-tt-fallback span { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: ${palette.honey}; }
 
       .db-grid { display: grid; gap: 18px; }
       .db-box {
