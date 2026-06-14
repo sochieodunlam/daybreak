@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { HEXES, MAP_W, MAP_H, HEX_S, projectLonLat } from "./worldHexes";
 
 // ---- Palette: white / ink / honey, honeycomb editorial ----
 const palette = {
@@ -100,9 +101,9 @@ function HoneycombCluster({ width = 260, color = palette.hair }: { width?: numbe
 
 function Nav() {
   return (
-    <nav style={{ maxWidth: 1180, margin: "0 auto", padding: "20px clamp(20px, 5vw, 56px) 8px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <img src="/daybreak-assets/daybreak-logo.png" alt="Daybreak Coffee Co." style={{ height: 52, width: "auto", display: "block" }} />
+    <nav className="db-nav">
+      <img className="db-logo" src="/daybreak-assets/daybreak-logo.png" alt="Daybreak Coffee Co." />
+      <div className="db-nav-row">
         <div className="db-nav-links">
           <a href="#how" className="db-nav-link">How it works</a>
           <a href="#coffees" className="db-nav-link">Coffees</a>
@@ -115,84 +116,52 @@ function Nav() {
   );
 }
 
-// ---- Equirectangular projection into the map viewBox ----
-const MAP_W = 720;
-const MAP_H = 360;
-const project = (lon: number, lat: number) => ({
-  x: ((lon + 180) / 360) * MAP_W,
-  y: ((90 - lat) / 180) * MAP_H,
-});
-
-// Rough continent blobs (cx,cy,rx,ry) in map space — landmass the honeycomb fills.
-const LAND = [
-  { cx: 160, cy: 95, rx: 82, ry: 70 },   // North America
-  { cx: 190, cy: 150, rx: 30, ry: 36 },  // Central America
-  { cx: 245, cy: 215, rx: 55, ry: 95 },  // South America
-  { cx: 395, cy: 80, rx: 58, ry: 34 },   // Europe
-  { cx: 405, cy: 185, rx: 70, ry: 85 },  // Africa
-  { cx: 560, cy: 90, rx: 112, ry: 60 },  // Asia
-  { cx: 560, cy: 175, rx: 48, ry: 30 },  // SE Asia / Indonesia
-  { cx: 635, cy: 235, rx: 46, ry: 35 },  // Australia
-];
-
-// Build a flat-top hexagon grid (clipped to the landmass) for the honeycomb continents.
-function buildHexGrid() {
-  const s = 10.5;
-  const dx = 1.5 * s;
-  const dy = Math.sqrt(3) * s;
-  const hexes: string[] = [];
-  let col = 0;
-  for (let x = s; x <= MAP_W - 2; x += dx, col++) {
-    const yOff = col % 2 ? dy / 2 : 0;
-    for (let y = s + yOff; y <= MAP_H - 2; y += dy) {
-      const pts = Array.from({ length: 6 }, (_, i) => {
-        const a = (Math.PI / 180) * (60 * i);
-        return `${(x + s * Math.cos(a)).toFixed(1)},${(y + s * Math.sin(a)).toFixed(1)}`;
-      }).join(" ");
-      hexes.push(pts);
-    }
-  }
-  return hexes;
-}
-const HEX_GRID = buildHexGrid();
+// ---- Honeycomb world map (land baked from Natural Earth — see scripts/genmap.mjs) ----
+const hexPoints = (x: number, y: number, r: number) =>
+  Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 180) * (60 * i);
+    return `${(x + r * Math.cos(a)).toFixed(1)},${(y + r * Math.sin(a)).toFixed(1)}`;
+  }).join(" ");
 
 function HexWorldMap({ active }: { active: number }) {
-  const pt = project(coffees[active].lon, coffees[active].lat);
-  return (
-    <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" style={{ display: "block" }} role="img" aria-label={`Origin map — ${coffees[active].country}`}>
-      <defs>
-        <clipPath id="land-clip">
-          {LAND.map((e, i) => <ellipse key={i} cx={e.cx} cy={e.cy} rx={e.rx} ry={e.ry} />)}
-        </clipPath>
-      </defs>
+  const c = coffees[active];
+  const pt = projectLonLat(c.lon, c.lat);
+  const R = 42; // tint radius around the active origin
 
-      {/* soft landmass base so the honeycomb reads as continents */}
-      <g clipPath="url(#land-clip)">
-        <rect x={0} y={0} width={MAP_W} height={MAP_H} fill={palette.land} />
-        {HEX_GRID.map((pts, i) => (
-          <polygon key={i} points={pts} fill={palette.honeyFill} stroke={palette.honeyLt} strokeWidth={1} />
-        ))}
-      </g>
+  return (
+    <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} width="100%" style={{ display: "block", overflow: "visible" }} role="img" aria-label={`Origin map — ${c.country}`}>
+      {HEXES.map(([x, y], i) => {
+        const near = Math.hypot(x - pt.x, y - pt.y) < R;
+        return (
+          <polygon
+            key={i}
+            points={hexPoints(x, y, HEX_S * 0.9)}
+            fill={near ? palette.honey : palette.honeyFill}
+            stroke={near ? palette.honey : palette.honeyLt}
+            strokeWidth={1}
+          />
+        );
+      })}
 
       {/* inactive origin markers */}
-      {coffees.map((c, i) => {
+      {coffees.map((co, i) => {
         if (i === active) return null;
-        const p = project(c.lon, c.lat);
-        return <circle key={c.slug} cx={p.x} cy={p.y} r={4} fill="none" stroke={palette.ink} strokeWidth={1.4} opacity={0.5} />;
+        const p = projectLonLat(co.lon, co.lat);
+        return <circle key={co.slug} cx={p.x} cy={p.y} r={3.2} fill="#fff" stroke={palette.ink} strokeWidth={1.4} opacity={0.55} />;
       })}
 
       {/* active origin marker with pulsing ring */}
       <motion.circle
         cx={pt.x} cy={pt.y} r={6} fill="none" stroke={palette.honey} strokeWidth={2}
         initial={{ scale: 1, opacity: 0.6 }}
-        animate={{ scale: [1, 3], opacity: [0.6, 0] }}
+        animate={{ scale: [1, 3.4], opacity: [0.6, 0] }}
         transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
         style={{ transformOrigin: `${pt.x}px ${pt.y}px` }}
       />
       <motion.circle
-        cx={pt.x} cy={pt.y} r={6} fill={palette.honey} stroke="#fff" strokeWidth={2}
         key={`dot-${active}`}
-        initial={{ scale: 0.4 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 18 }}
+        cx={pt.x} cy={pt.y} r={5} fill={palette.ink} stroke="#fff" strokeWidth={2}
+        initial={{ scale: 0.3 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 320, damping: 18 }}
       />
     </svg>
   );
@@ -268,51 +237,49 @@ function Hero() {
 
   return (
     <header className="db-hero">
-      {/* LEFT — hexagon world map + rotating photo wheel */}
+      {/* LEFT — hexagon world map with the photo floating beside it */}
       <div className="db-hero-visual">
-        <div style={{ border: `1px solid ${palette.line}`, background: palette.paper, padding: "18px 18px 14px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-            <span className="db-eyebrow">This week, sourced from</span>
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={c.country}
-                initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
-                style={{ fontSize: 15, fontWeight: 700, color: palette.honey }}
-              >
-                {c.country}
-              </motion.span>
-            </AnimatePresence>
-          </div>
+        <div className="db-hero-head">
+          <span className="db-eyebrow">This week, sourced from</span>
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={c.country}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
+              style={{ fontSize: 15, fontWeight: 700, color: palette.honey }}
+            >
+              {c.country}
+            </motion.span>
+          </AnimatePresence>
+        </div>
 
-          <div className="db-hero-stage">
-            <div className="db-hero-map"><HexWorldMap active={active} /></div>
-            <div className="db-hero-photo"><RotaryPhoto active={active} dir={dir} /></div>
-          </div>
+        <div className="db-hero-body">
+          <div className="db-hero-map"><HexWorldMap active={active} /></div>
+          <div className="db-hero-photo"><RotaryPhoto active={active} dir={dir} /></div>
+        </div>
 
-          {/* caption + selector dots */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, gap: 12, flexWrap: "wrap" }}>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={c.slug}
-                initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
-              >
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{c.origin} {c.name}</div>
-                <div style={{ fontSize: 13, color: palette.muted }}>{c.notes} · {c.roast}</div>
-              </motion.div>
-            </AnimatePresence>
-            <div style={{ display: "flex", gap: 8 }}>
-              {coffees.map((co, i) => (
-                <button
-                  key={co.slug}
-                  aria-label={`Show ${co.origin}`}
-                  onClick={() => go(i)}
-                  style={{
-                    width: 11, height: 11, padding: 0, cursor: "pointer", background: i === active ? palette.honey : "transparent",
-                    border: `1.4px solid ${i === active ? palette.honey : palette.muted}`, transform: "rotate(45deg)",
-                  }}
-                />
-              ))}
-            </div>
+        {/* caption + selector dots */}
+        <div className="db-hero-cap">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={c.slug}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 700 }}>{c.origin} {c.name}</div>
+              <div style={{ fontSize: 13, color: palette.muted }}>{c.notes} · {c.roast}</div>
+            </motion.div>
+          </AnimatePresence>
+          <div style={{ display: "flex", gap: 8 }}>
+            {coffees.map((co, i) => (
+              <button
+                key={co.slug}
+                aria-label={`Show ${co.origin}`}
+                onClick={() => go(i)}
+                style={{
+                  width: 11, height: 11, padding: 0, cursor: "pointer", background: i === active ? palette.honey : "transparent",
+                  border: `1.4px solid ${i === active ? palette.honey : palette.muted}`, transform: "rotate(45deg)",
+                }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -477,12 +444,9 @@ function Footer() {
   return (
     <footer style={{ borderTop: `1px solid ${palette.line}` }}>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "clamp(40px, 6vw, 64px) clamp(20px, 5vw, 56px) 28px" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 28 }}>
-          <HoneycombCluster width={140} color={palette.hair} />
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 24, justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontWeight: 700, fontSize: 20 }}>Daybreak Coffee Co.</div>
-          <div style={{ display: "flex", gap: 20, color: palette.muted, fontSize: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 28, justifyContent: "space-between", alignItems: "center" }}>
+          <img src="/daybreak-assets/daybreak-logo.png" alt="Daybreak Coffee Co." style={{ height: 76, width: "auto", display: "block" }} />
+          <div style={{ display: "flex", gap: 20, color: palette.muted, fontSize: 14, flexWrap: "wrap", alignItems: "center" }}>
             <a className="db-link" href="mailto:hello@daybreak.example">hello@daybreak.example</a>
             <a className="db-link" href="#">Instagram @daybreakcoffee</a>
             <span>Oakland, CA</span>
@@ -509,6 +473,9 @@ function GlobalStyle() {
         display: inline-block; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
         font-weight: 700; color: ${palette.ink};
       }
+      .db-nav { max-width: 1180px; margin: 0 auto; padding: 24px clamp(20px, 5vw, 56px) 8px; }
+      .db-logo { display: block; margin: 0 auto; height: clamp(96px, 12vw, 150px); width: auto; }
+      .db-nav-row { display: flex; align-items: center; justify-content: center; gap: clamp(18px, 3vw, 30px); margin-top: 12px; flex-wrap: wrap; }
       .db-nav-links { display: flex; gap: 26px; }
       .db-nav-link {
         font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
@@ -516,22 +483,26 @@ function GlobalStyle() {
         transition: border-color .2s ease, color .2s ease;
       }
       .db-nav-link:hover { border-color: ${palette.honey}; color: ${palette.honey}; }
-      @media (max-width: 760px) { .db-nav-links { display: none; } }
+      @media (max-width: 620px) { .db-nav-links { display: none; } }
 
       .db-hero {
-        max-width: 1180px; margin: 0 auto; padding: clamp(28px, 5vw, 64px) clamp(20px, 5vw, 56px) clamp(40px, 6vw, 72px);
-        display: grid; grid-template-columns: 1.45fr 1fr; gap: clamp(28px, 4vw, 56px); align-items: center;
+        max-width: 1180px; margin: 0 auto; padding: clamp(24px, 4vw, 52px) clamp(20px, 5vw, 56px) clamp(40px, 6vw, 72px);
+        display: grid; grid-template-columns: 1.55fr 1fr; gap: clamp(28px, 4vw, 56px); align-items: center;
       }
       .db-hero-copy { align-self: center; }
-      .db-hero-stage { position: relative; }
-      .db-hero-map { width: 100%; }
-      .db-hero-photo {
-        position: absolute; right: 4%; bottom: -6%; width: 38%; min-width: 130px; max-width: 220px;
-      }
+      .db-hero-visual { display: flex; flex-direction: column; gap: 16px; }
+      .db-hero-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+      .db-hero-body { display: flex; align-items: center; gap: clamp(16px, 2.5vw, 26px); }
+      .db-hero-map { flex: 1 1 auto; min-width: 0; }
+      .db-hero-photo { flex: 0 0 clamp(148px, 17vw, 196px); }
+      .db-hero-cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
       @media (max-width: 880px) {
         .db-hero { grid-template-columns: 1fr; }
         .db-hero-copy { order: -1; }
-        .db-hero-photo { width: 34%; bottom: -4%; }
+      }
+      @media (max-width: 480px) {
+        .db-hero-body { flex-direction: column; }
+        .db-hero-photo { flex-basis: auto; width: 62%; align-self: center; }
       }
 
       .db-grid { display: grid; gap: 18px; }
